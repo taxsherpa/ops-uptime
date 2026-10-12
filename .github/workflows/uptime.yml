@@ -1,0 +1,63 @@
+# Checks that the production sites answer, every 5 minutes, from outside Railway.
+# What it checks and how it alerts: check.mjs and README.md.
+#
+# GitHub starts scheduled runs late when it is busy, so an alert can arrive 10 to
+# 15 minutes after a site goes down.
+name: uptime
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: uptime
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # The previous run's result, so a site that stays down alerts once.
+      - name: Restore the last state
+        run: |
+          for id in $(gh run list --workflow uptime.yml --status completed --limit 6 --json databaseId --jq '.[].databaseId'); do
+            if gh run download "$id" --name uptime-state --dir . 2>/dev/null; then
+              echo "state restored from run $id"
+              break
+            fi
+          done
+          cat uptime-state.json 2>/dev/null || echo "no previous state"
+
+      - name: Check the sites
+        env:
+          OPS_ALERT_WEBHOOK_URL: ${{ secrets.OPS_ALERT_WEBHOOK_URL }}
+        run: node check.mjs
+
+      - name: Keep the state for the next run
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: uptime-state
+          path: uptime-state.json
+          retention-days: 1
+          if-no-files-found: ignore
+
+      # GitHub turns off scheduled workflows in a public repo after 60 days without
+      # a commit. Re-enabling the workflow on every run is meant to keep it on.
+      - name: Keep the schedule enabled
+        if: always()
+        run: gh workflow enable uptime.yml || true

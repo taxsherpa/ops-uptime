@@ -2,6 +2,5 @@
   { "name": "taxsherpa.com", "url": "https://taxsherpa.com/" },
   { "name": "Wealth Climb calculator", "url": "https://wealthclimb.taxsherpa.com/" },
   { "name": "Section 139 generator", "url": "https://sec139.taxsherpa.com/" },
-  { "name": "Receipt relay", "url": "https://realtor-receipt-relay-production.up.railway.app/health" },
-  { "name": "TEST site (nothing is down)", "url": "https://uptime-test-does-not-exist.taxsherpa.com/" }
+  { "name": "Receipt relay", "url": "https://realtor-receipt-relay-production.up.railway.app/health" }
 ]

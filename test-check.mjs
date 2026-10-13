@@ -11,7 +11,7 @@ import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
-import { transitions } from './check.mjs';
+import { transitions, explain } from './check.mjs';
 
 let pass = 0;
 let fail = 0;
@@ -32,6 +32,10 @@ check('recovery alerts once and clears the state', t.alerts.length === 1 && t.al
 t = transitions({}, [up('a'), up('b')], 'T4');
 check('all up, nothing to send', t.alerts.length === 0 && Object.keys(t.next).length === 0, t);
 
+check('a failed address lookup reads as "address not found"', explain({ cause: { code: 'ENOTFOUND' } }) === 'address not found (ENOTFOUND)');
+check('a timeout reads as "no answer"', explain({ name: 'TimeoutError' }) === 'no answer in 20 seconds');
+check('an unknown failure keeps its code', explain({ cause: { code: 'EWHATEVER' }, message: 'fetch failed' }) === 'EWHATEVER');
+
 // The script against real sockets
 let healthy = false;
 let hookStatus = 200;
@@ -50,6 +54,12 @@ const hook = http.createServer((req, res) => {
 });
 await new Promise((r) => site.listen(0, '127.0.0.1', r));
 await new Promise((r) => hook.listen(0, '127.0.0.1', r));
+// A port that was open a moment ago and is now closed: nothing answers on it.
+const gone = http.createServer();
+await new Promise((r) => gone.listen(0, '127.0.0.1', r));
+const closedPort = gone.address().port;
+await new Promise((r) => gone.close(r));
+
 const S = `http://127.0.0.1:${site.address().port}`;
 const H = `http://127.0.0.1:${hook.address().port}/hook`;
 
@@ -61,7 +71,7 @@ fs.writeFileSync(
   JSON.stringify([
     { name: 'Good', url: `${S}/ok` },
     { name: 'Flaky', url: `${S}/flaky` },
-    { name: 'Nowhere', url: 'http://127.0.0.1:9/' },
+    { name: 'Nowhere', url: `http://127.0.0.1:${closedPort}/` },
   ])
 );
 const run = () =>
@@ -78,7 +88,8 @@ const run = () =>
 try {
   let r = await run();
   check('run 1: two sites down, two alerts delivered', received.length === 2 && received.every((a) => a.event === 'down' && a.source === 'uptime-check'), received);
-  check('run 1: the alert names the site, the address and the cause', received.some((a) => a.site === 'Flaky' && a.url === `${S}/flaky` && a.cause === 'HTTP 500'), received);
+  check('run 1: the alert names the site, the address and the cause', received.some((a) => a.site === 'Flaky' && a.url === `${S}/flaky` && a.cause === 'the site answered with error 500'), received);
+  check('run 1: an address nothing answers on is explained in plain words', received.some((a) => a.site === 'Nowhere' && a.cause === 'connection refused (ECONNREFUSED)'), received);
   check('run 1: exits 0', r.code === 0, r.out);
 
   r = await run();

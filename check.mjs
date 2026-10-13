@@ -24,6 +24,23 @@ const ATTEMPTS = 3;
 const WAIT_MS = Number(process.env.UPTIME_WAIT_MS ?? 15000);
 const TIMEOUT_MS = 20000;
 
+/** The failure in words a person reads in a text message, with the technical code kept at the end. */
+export function explain(err) {
+  if (err.name === 'TimeoutError') return `no answer in ${TIMEOUT_MS / 1000} seconds`;
+  const code = err.cause?.code || '';
+  const plain = {
+    ENOTFOUND: 'address not found',
+    EAI_AGAIN: 'address lookup failed',
+    ECONNREFUSED: 'connection refused',
+    ECONNRESET: 'connection dropped',
+    ETIMEDOUT: 'connection timed out',
+    CERT_HAS_EXPIRED: 'security certificate expired',
+    ERR_TLS_CERT_ALTNAME_INVALID: 'security certificate does not match the address',
+  }[code];
+  if (plain) return `${plain} (${code})`;
+  return code || err.message;
+}
+
 /** A site is up when any of a few spaced attempts answers below 400. */
 export async function probe(url) {
   let cause = '';
@@ -32,9 +49,9 @@ export async function probe(url) {
     try {
       const res = await fetch(url, { redirect: 'follow', signal: AbortSignal.timeout(TIMEOUT_MS) });
       if (res.status < 400) return { up: true, cause: '' };
-      cause = `HTTP ${res.status}`;
+      cause = `the site answered with error ${res.status}`;
     } catch (err) {
-      cause = err.name === 'TimeoutError' ? `no answer in ${TIMEOUT_MS / 1000}s` : err.cause?.code || err.message;
+      cause = explain(err);
     }
   }
   return { up: false, cause };

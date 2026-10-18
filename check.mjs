@@ -3,8 +3,9 @@
  * tells a person when one stops answering, and again when it comes back.
  *
  * It exists because taxsherpa.com was down from 2026-10-05 to 2026-10-09 and
- * nobody knew. It runs on GitHub's machines (.github/workflows/uptime.yml), so
- * it keeps working when Railway is the thing that is broken.
+ * nobody knew. loop.mjs runs it every 5 minutes as an always-on service; the
+ * GitHub workflow (.github/workflows/uptime.yml) is the slower copy that stays up
+ * when Railway is the thing that is broken.
  *
  * An alert is one POST to OPS_ALERT_WEBHOOK_URL, a GoHighLevel inbound webhook
  * whose workflow sends the text message and the email. One alert when a site
@@ -78,7 +79,7 @@ export function transitions(prev, results, now) {
   return { alerts, next };
 }
 
-async function main() {
+export async function main() {
   const sites = JSON.parse(fs.readFileSync(process.env.UPTIME_SITES_FILE || 'sites.json', 'utf8'));
   const stateFile = process.env.UPTIME_STATE_FILE || 'uptime-state.json';
   const hook = process.env.OPS_ALERT_WEBHOOK_URL;

@@ -30,6 +30,7 @@ This repo is public so that Actions minutes are not limited. It holds no secret:
 
 ## 5. How to use it
 - **Add or remove a site:** edit `sites.json` (a name and an address per site) and push.
+- **Prove that an alert really arrives (Railway):** warn whoever receives the alerts first. In the Railway service add the variable `UPTIME_SITES_FILE` = `sites.test.json` and deploy. That file is the four real sites plus one address that cannot exist, so the real ones stay watched. Within about 2 minutes the text and the email arrive ("TEST ONLY - this address does not exist"). Then delete the variable and deploy again. Keep `sites.test.json` in step with `sites.json` when a site is added.
 - **Change who gets alerted, or the wording:** edit the GoHighLevel workflow, not this repo.
 - **Test the code:** `npm test` (`test-check.mjs` and `test-loop.mjs`, against local stand-ins; sends nothing). The clean-stop-on-SIGTERM check in `test-loop.mjs` only runs on Linux and macOS.
 - **Run the check on your machine without alerting:** `node check.mjs` with `OPS_ALERT_WEBHOOK_URL` unset.

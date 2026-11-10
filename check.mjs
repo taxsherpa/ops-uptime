@@ -24,6 +24,11 @@ import { pathToFileURL } from 'node:url';
 const ATTEMPTS = 3;
 const WAIT_MS = Number(process.env.UPTIME_WAIT_MS ?? 15000);
 const TIMEOUT_MS = 20000;
+// A 429 ("too many requests") is the network telling the checker to slow down, not the site being down: on 2026-11-10 Railway's
+// network rate-limited this checker twice and sent 20+ false "down" texts while the sites kept serving visitors. A site that only
+// answers 429 is "could not check": no alert either way, until it has lasted this many checks in a row (6 x 5 minutes = 30).
+const LIMITED_MAX = Number(process.env.UPTIME_LIMITED_MAX ?? 6);
+const LIMITED_KEY = '__limited';
 
 /** The failure in words a person reads in a text message, with the technical code kept at the end. */
 export function explain(err) {
@@ -42,33 +47,54 @@ export function explain(err) {
   return code || err.message;
 }
 
-/** A site is up when any of a few spaced attempts answers below 400. */
+/**
+ * A site is up when any of a few spaced attempts answers below 400.
+ * When every attempt was answered with 429 the result is { up: false, limited: true }: the check was throttled, so it says
+ * nothing about the site (see LIMITED_MAX). Any other failure among the attempts makes it an ordinary "down".
+ */
 export async function probe(url) {
   let cause = '';
+  let onlyLimited = true;
   for (let i = 0; i < ATTEMPTS; i++) {
     if (i) await new Promise((r) => setTimeout(r, WAIT_MS));
     try {
       const res = await fetch(url, { redirect: 'follow', signal: AbortSignal.timeout(TIMEOUT_MS) });
       if (res.status < 400) return { up: true, cause: '' };
+      if (res.status !== 429) onlyLimited = false;
       cause = `the site answered with error ${res.status}`;
     } catch (err) {
+      onlyLimited = false;
       cause = explain(err);
     }
   }
-  return { up: false, cause };
+  return onlyLimited ? { up: false, limited: true, cause } : { up: false, cause };
 }
 
 /**
  * Compares this run with the last one.
- *   prev:    { [url]: ISO time the site went down }
- *   results: [{ name, url, up, cause }]
+ *   prev:    { [url]: ISO time the site went down, __limited: { [url]: checks in a row that were throttled } }
+ *   results: [{ name, url, up, cause, limited? }]
  * Returns the alerts to send and the state to keep for the next run.
+ * A throttled check (limited) changes nothing: a site that was up stays up, one that was down stays down. Only after
+ * LIMITED_MAX throttled checks in a row is it reported, as down, with the reason in words.
  */
 export function transitions(prev, results, now) {
   const alerts = [];
   const next = {};
+  const prevLimited = prev[LIMITED_KEY] || {};
+  const limitedNow = {};
   for (const r of results) {
     const since = prev[r.url];
+    if (r.limited) {
+      const n = (prevLimited[r.url] || 0) + 1;
+      limitedNow[r.url] = n;
+      if (since) next[r.url] = since;
+      else if (n >= LIMITED_MAX) {
+        next[r.url] = now;
+        alerts.push({ event: 'down', site: r.name, url: r.url, cause: `rate limited by the network for ${n} checks in a row (${r.cause})`, started_at: now });
+      }
+      continue;
+    }
     if (!r.up) {
       next[r.url] = since || now;
       if (!since) alerts.push({ event: 'down', site: r.name, url: r.url, cause: r.cause, started_at: now });
@@ -76,6 +102,7 @@ export function transitions(prev, results, now) {
       alerts.push({ event: 'up', site: r.name, url: r.url, cause: 'Answering again', started_at: since });
     }
   }
+  if (Object.keys(limitedNow).length) next[LIMITED_KEY] = limitedNow;
   return { alerts, next };
 }
 
@@ -93,7 +120,7 @@ export async function main() {
 
   const results = await Promise.all(sites.map(async (s) => ({ ...s, ...(await probe(s.url)) })));
   for (const r of results) {
-    console.log(`${r.up ? 'up  ' : 'DOWN'}  ${r.name}  ${r.url}${r.up ? '' : `  (${r.cause})`}`);
+    console.log(`${r.up ? 'up  ' : r.limited ? 'LTD ' : 'DOWN'}  ${r.name}  ${r.url}${r.up ? '' : `  (${r.limited ? 'throttled by the network, not counted as down: ' : ''}${r.cause})`}`);
   }
 
   const { alerts, next } = transitions(prev, results, new Date().toISOString());

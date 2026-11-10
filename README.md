@@ -37,6 +37,8 @@ This repo is public so that Actions minutes are not limited. It holds no secret:
 
 A site counts as down when three attempts, 15 seconds apart, all fail to answer or answer with an error (400 or above).
 
+**A 429 is not "down".** "429 Too Many Requests" means the network is rate-limiting the checker. On 2026-11-10 Railway's network did that twice (about 10 and 25 minutes), the check marked four healthy sites as down, and 20+ false texts went out; the sites' own logs showed the checks never reached them and real visitors kept loading the pages. Now, when all three attempts get 429, the check prints `LTD` instead of `DOWN` and sends nothing, neither a "down" nor an "up". Only when it lasts 6 checks in a row (30 minutes; `UPTIME_LIMITED_MAX`) does it alert, saying "rate limited by the network". Any other failure (500, timeout, refused, certificate) still alerts as before, even in the middle of a throttled streak. The count of throttled checks is kept in the state file under `__limited`.
+
 ## 6. Troubleshooting and limits
 - **No `--- check` line in the Railway logs for 10 minutes:** the service is down or stuck. Redeploy it from Deployments. This is the one failure that alerts nobody, which is why the GitHub copy exists.
 - **A GitHub run is red:** open it. "alert not delivered" means the site check worked but GoHighLevel did not accept the alert; the next run tries again. Check that the GoHighLevel workflow is published and the secret is the full webhook address.

@@ -12,12 +12,17 @@
  * against the 1,550 a 5-minute schedule promises, which is why this exists.
  *
  * Usage: node loop.mjs   (the variables are the ones check.mjs reads, plus
- *   UPTIME_EVERY_SECONDS   time between the starts of two checks, default 300)
+ *   UPTIME_EVERY_SECONDS   time between the starts of two checks, default 300
+ *   SMS_EVERY_MINUTES      time between two texting health checks (sms-health.mjs), default 30;
+ *                          that check runs only when GHL_SMS_TOKEN and GHL_LOCATION_ID are set)
  */
 
 import { main } from './check.mjs';
+import { main as smsHealth } from './sms-health.mjs';
 
 const EVERY_MS = Math.max(1, Number(process.env.UPTIME_EVERY_SECONDS ?? 300)) * 1000;
+const SMS_EVERY_MS = Math.max(1, Number(process.env.SMS_EVERY_MINUTES ?? 30)) * 60 * 1000;
+let lastSms = 0;
 
 let stopping = false;
 let wake = null;
@@ -48,6 +53,15 @@ while (!stopping) {
   } catch (err) {
     // A bad run (unreadable sites file, a crash) must not end the loop: the next one may be fine.
     console.error(`check crashed: ${err.stack || err.message}`);
+  }
+  if (Date.now() - lastSms >= SMS_EVERY_MS) {
+    lastSms = Date.now();
+    try {
+      await smsHealth();
+    } catch (err) {
+      // GoHighLevel down or the token refused: log it, keep the uptime loop going.
+      console.error(`sms-health failed: ${err.message}`);
+    }
   }
   // check.mjs sets exitCode 1 when an alert was not delivered; here that is already
   // logged and retried on the next run, and a leftover 1 would make a clean stop look like a failure.

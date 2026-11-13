@@ -18,6 +18,7 @@ It sends one alert when a site goes down and one when it comes back. A site that
 - **In Railway: the variable `OPS_ALERT_WEBHOOK_URL`**, the same address as the GitHub secret below. Set it by hand in the Railway panel; never write it in a file.
 - **In GitHub: secret `OPS_ALERT_WEBHOOK_URL`** (Settings → Secrets and variables → Actions): the inbound webhook of the GoHighLevel workflow "Ops – Site down alert". That workflow sends the text message and the email. Without the secret the check still runs and prints what it would have sent.
 - Nothing else. No dependencies to install.
+- **Texting health check (optional, Railway only): the variables `GHL_SMS_TOKEN` and `GHL_LOCATION_ID`.** `GHL_SMS_TOKEN` is a GoHighLevel Private Integration token with only the conversations read scope, made for this service. Set both by hand in the Railway panel; never in a file or in GitHub. Without them the texting check is skipped.
 
 This repo is public so that Actions minutes are not limited. It holds no secret: the sites in `sites.json` are public addresses.
 
@@ -38,6 +39,12 @@ This repo is public so that Actions minutes are not limited. It holds no secret:
 A site counts as down when three attempts, 15 seconds apart, all fail to answer or answer with an error (400 or above).
 
 **A 429 is not "down".** "429 Too Many Requests" means the network is rate-limiting the checker. On 2026-11-10 Railway's network did that twice (about 10 and 25 minutes), the check marked four healthy sites as down, and 20+ false texts went out; the sites' own logs showed the checks never reached them and real visitors kept loading the pages. Now, when all three attempts get 429, the check prints `LTD` instead of `DOWN` and sends nothing, neither a "down" nor an "up". Only when it lasts 6 checks in a row (30 minutes; `UPTIME_LIMITED_MAX`) does it alert, saying "rate limited by the network". Any other failure (500, timeout, refused, certificate) still alerts as before, even in the middle of a throttled streak. The count of throttled checks is kept in the state file under `__limited`.
+
+### Texting health check (`sms-health.mjs`)
+On 2026-11-11 one bulk send of 462 texts drew 21 STOP replies in a few hours, and GoHighLevel's phone quality limit ("opt-out/error limit") paused every automated text for about 19 hours. Nobody knew until texts had failed. Every 30 minutes the Railway service now counts, for the current day in New York time, outbound texts by status and the opt-out replies (a reply that is only STOP, STOPALL, UNSUBSCRIBE, CANCEL, END or QUIT), and sends through the same alert webhook:
+- **"Texting (warning)"** once a day when opt-outs reach `SMS_OPTOUT_WARN` (default 8) or failed texts reach `SMS_FAILED_WARN` (default 10): stop any bulk send until the next day.
+- **"Texting (blocked)"** once a day when a text fails with a limit error: GoHighLevel has paused automated texts.
+The alert workflow sends a text and an email; while texts are paused, the email still arrives. GoHighLevel does not publish the exact limit, so the defaults are set below the 2026-11-11 day (21 opt-outs). Read only: it never sends, tags or changes a contact. The GitHub copy does not run it.
 
 ## 6. Troubleshooting and limits
 - **No `--- check` line in the Railway logs for 10 minutes:** the service is down or stuck. Redeploy it from Deployments. This is the one failure that alerts nobody, which is why the GitHub copy exists.

@@ -4,10 +4,12 @@
   "private": true,
   "description": "Checks that Tax Sherpa's production sites answer and alerts a person when one stops.",
   "type": "module",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "start": "node loop.mjs",
     "check": "node check.mjs",
-    "test": "node test-check.mjs && node test-loop.mjs"
+    "test": "node test-check.mjs && node test-loop.mjs && node test-sms-health.mjs"
   }
 }

@@ -30,6 +30,7 @@ check('opt-outs: bare STOP words only, not a sentence', c.optOuts === 3, c);
 check('a carrier error is not a limit hit', c.limitHits === 0, c);
 const blockedDay = [...day, sms('outbound', 'failed', 'Hi', 13, { message: "today's opt-out/error limit reached" })];
 check('a limit error counts as a limit hit', classify(blockedDay, START).limitHits === 1);
+check('a text over 1,600 characters is not a limit hit (2026-11-17 false alarm)', classify([...day, sms('outbound', 'failed', 'Hi', 13, 'The concatenated message body exceeds the 1600 character limit')], START).limitHits === 0);
 
 const T = { optOutWarn: 8, failedWarn: 10 };
 let d = decide({ ...c, optOuts: 3 }, {}, '2026-11-13', T);

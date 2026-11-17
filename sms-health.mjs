@@ -24,7 +24,9 @@ import { pathToFileURL } from 'node:url';
 const API = 'https://services.leadconnectorhq.com';
 const TZ = 'America/New_York';
 const OPT_OUT = /^\s*(stop|stopall|unsubscribe|cancel|end|quit)[\s.!]*$/i;
-const LIMIT_ERROR = /limit/i;
+// The pause itself ("today's opt-out/error limit reached"). Not any "limit": a text over 1,600 characters fails with "character limit"
+// and is that one text's problem, not a pause (false "blocked" alert, 2026-11-17).
+const LIMIT_ERROR = /opt-?out\/error limit|limit reached|quality limit/i;
 
 export const etDay = (ms) => new Date(ms).toLocaleDateString('en-CA', { timeZone: TZ });
 
